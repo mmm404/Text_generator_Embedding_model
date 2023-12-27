@@ -1,0 +1,76 @@
+import numpy as np
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.models import Sequential, load_model
+from tensorflow.keras.layers import Embedding, LSTM, Dense
+import os
+
+text_path = r'C:\Users\mmms\Desktop\model_embedding\data1.txt'  #path to data folder
+model_path = r'C:\Users\mmms\Desktop\model_embedding\text_generation_model.keras' #path to save the model
+ 
+
+
+def create_embedding_model():
+
+    with open(text_path,'r') as fp:
+        text_data = fp.read().replace('\n','').split('.')
+    tokenizer = Tokenizer()
+    tokenizer.fit_on_texts(text_data)
+    total_words = len(tokenizer.word_index) + 1
+
+    input_sequences = []
+    for line in text_data:
+        token_list = tokenizer.texts_to_sequences([line])[0]
+        for i in range(1, len(token_list)):
+            n_gram_sequence = token_list[:i+1]
+            input_sequences.append(n_gram_sequence)
+
+    max_sequence_length = max([len(seq) for seq in input_sequences])
+    padded_sequences = pad_sequences(input_sequences, maxlen=max_sequence_length, padding='pre')
+
+    X, y = padded_sequences[:, :-1], padded_sequences[:, -1]
+    y = np.array(y)
+
+    embedding_dim = 50
+    model = Sequential()
+    model.add(Embedding(input_dim=total_words, output_dim=embedding_dim, input_length=max_sequence_length-1))
+    model.add(LSTM(units=100))
+    model.add(Dense(units=total_words, activation='softmax'))
+
+    model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+
+    model.fit(X, y, epochs=50, verbose=1)
+    model.save(model_path)
+
+
+
+def predict_text_sentence():
+    with open(text_path,'r') as fp:
+        text_data = fp.read().replace('\n','').split('.')
+    tokenizer = Tokenizer()
+    tokenizer.fit_on_texts(text_data)
+
+    input_sequences = []
+    for line in text_data:
+        token_list = tokenizer.texts_to_sequences([line])[0]
+        for i in range(1, len(token_list)):
+            n_gram_sequence = token_list[:i+1]
+            input_sequences.append(n_gram_sequence)
+
+    max_sequence_length = max([len(seq) for seq in input_sequences])
+    loaded_model = load_model(model_path)
+    seed_text = input('Text? ')
+    next_words = 4
+
+    for _ in range(next_words):
+        token_list = tokenizer.texts_to_sequences([seed_text])[0]
+        token_list = pad_sequences([token_list], maxlen=max_sequence_length-1, padding='pre')
+        predicted_index = np.argmax(loaded_model.predict(token_list), axis=-1)
+        predicted_word = tokenizer.index_word[predicted_index[0]]
+        seed_text += " " + predicted_word
+
+    return seed_text
+
+create_embedding_model()
+while True:
+    print(predict_text_sentence())
